@@ -1,0 +1,5 @@
+{
+  "name": "empty-dirs-plugin",
+  "description": "Plugin with empty component directories that should trigger warnings",
+  "version": "1.0.0"
+}

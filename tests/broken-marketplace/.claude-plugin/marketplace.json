@@ -1,0 +1,10 @@
+{
+  "plugins": {
+    "bad-plugin": {
+      "source": {
+        "source": "github",
+        "repo": "test/bad"
+      }
+    }
+  }
+}

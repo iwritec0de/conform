@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/scripts/validate-input.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

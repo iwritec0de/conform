@@ -1,0 +1,422 @@
+#!/usr/bin/env bash
+# conform — Unified CLI for Claude Code plugin validation
+#
+# Usage:
+#   conform [mode] <target> [options]
+#
+# When mode is omitted, defaults to "all" (structural + integration).
+#
+# Modes:
+#   all           Structural + integration (default)
+#   structural    Static validation only (free, instant, no API)
+#   integration   Integration tests via claude -p
+#
+# Target:
+#   Path to a single plugin directory, or a directory containing plugins.
+#
+# Auth:
+#   --auth api                 Use ANTHROPIC_API_KEY (for CI, no OAuth needed)
+#   --auth oauth               Use OAuth login (default, interactive)
+#   Auto-detects: uses "api" if ANTHROPIC_API_KEY is set, otherwise "oauth".
+#
+# Examples:
+#   conform ./my-plugin                              # All tests (structural + integration)
+#   conform ./plugins/ --model sonnet                # All tests, sonnet model
+#   conform structural ./my-plugin                   # Structural only
+#   conform integration ./plugins/ --skills          # Integration, skills only
+#   conform ./my-plugin --auth api                   # CI mode with API key
+#   conform ./plugins/ --skip marketplace,conform    # Skip dirs
+#
+# Component filters:
+#   --skills        Only test skills
+#   --commands      Only test commands
+#   --hooks         Only test hooks
+#   --agents        Only test agents
+#   (default: all components)
+#
+# Options:
+#   --skip <list>              Comma-separated dirs to skip
+#   --auth <api|oauth>         Auth mode (default: auto-detect)
+#   --model <model>            Model for integration (default: haiku)
+#   --max-turns <n>            Max turns per test (default: 5)
+#   --timeout <secs>           Per-test timeout (default: 60)
+#   --verbose / -v             Show full responses
+#   --dry-run                  Preview without API calls
+#   --stop-on-fail             Stop after first failure
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_MODEL="claude-haiku-4-5"
+
+# ── Colors ───────────────────────────────────────────────────────────
+
+if [[ -t 1 ]]; then
+    RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[0;33m'
+    CYAN='\033[0;36m' BOLD='\033[1m' DIM='\033[0;90m' RESET='\033[0m'
+else
+    RED='' GREEN='' YELLOW='' CYAN='' BOLD='' DIM='' RESET=''
+fi
+
+# ── Usage ────────────────────────────────────────────────────────────
+
+usage() {
+    sed -n '2,/^[^#]/{ /^#/s/^# \{0,1\}//p; }' "$0"
+    exit 0
+}
+
+# ── Plugin discovery ─────────────────────────────────────────────────
+
+is_plugin_dir() {
+    local dir="$1" d
+    for d in .claude-plugin skills commands agents hooks; do
+        [[ -d "$dir/$d" ]] && return 0
+    done
+    # .claude/ counts only if it contains plugin components
+    if [[ -d "$dir/.claude" ]]; then
+        for d in commands skills agents hooks; do
+            [[ -d "$dir/.claude/$d" ]] && return 0
+        done
+        [[ -f "$dir/.claude/settings.json" ]] && return 0
+    fi
+    return 1
+}
+
+# Resolve the effective component root for a plugin directory.
+# Standard plugin dirs at root take priority; fall back to .claude/ subdir.
+effective_plugin_dir() {
+    local dir="$1"
+    local d
+    for d in .claude-plugin skills commands agents hooks; do
+        [[ -d "$dir/$d" ]] && { echo "$dir"; return; }
+    done
+    [[ -d "$dir/.claude" ]] && { echo "$dir/.claude"; return; }
+    echo "$dir"
+}
+
+# Resolve target into a list of plugin directories.
+# Args: <target-path> [skip-list]
+# Prints one plugin path per line.
+resolve_plugins() {
+    local target="$1"
+    local skip_csv="${2:-}"
+    local target_abs
+    target_abs="$(cd "$target" && pwd)"
+
+    # If target is a component folder itself (e.g. ./skills), walk up to the plugin root
+    local tname
+    tname=$(basename "$target_abs")
+    case "$tname" in
+        skills|commands|agents|hooks)
+            local parent
+            parent=$(dirname "$target_abs")
+            if is_plugin_dir "$parent"; then
+                printf "${DIM}(using parent dir %s)${RESET}\n" "$(basename "$parent")" >&2
+                target_abs="$parent"
+            fi
+            ;;
+    esac
+
+    if is_plugin_dir "$target_abs"; then
+        # Check if this dir also contains child plugin dirs.
+        # If so, treat it as a parent directory (scan children) not a single plugin.
+        local has_children=0
+        for child in "$target_abs"/*/; do
+            [[ -d "$child" ]] || continue
+            local cname; cname=$(basename "$child")
+            [[ "$cname" == .* ]] && continue
+            is_plugin_dir "$child" && { has_children=1; break; }
+        done
+        if [[ $has_children -eq 0 ]]; then
+            echo "$target_abs"
+            return
+        fi
+        # Fall through to scan children
+    fi
+
+    if [[ ! -d "$target_abs" ]]; then
+        printf "${RED}Error: %s is not a directory${RESET}\n" "$target" >&2
+        exit 1
+    fi
+
+    # Directory of plugins
+    local IFS=','
+    local -a skip_arr=($skip_csv)
+    unset IFS
+
+    for dir in "$target_abs"/*/; do
+        [[ -d "$dir" ]] || continue
+        local name
+        name=$(basename "$dir")
+
+        # Skip hidden
+        [[ "$name" == .* ]] && continue
+
+        # Skip listed
+        local skip=0
+        for s in "${skip_arr[@]:-}"; do
+            [[ "$name" == "$s" ]] && { skip=1; break; }
+        done
+        [[ $skip -eq 1 ]] && continue
+
+        is_plugin_dir "$dir" && echo "$dir"
+    done
+}
+
+# ── Parse args ───────────────────────────────────────────────────────
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+# If first arg is a known mode, use it; otherwise treat it as a target path
+# and default to "all" mode (structural + integration).
+case "${1:-}" in
+    structural|integration|all)
+        MODE="$1"; shift ;;
+    --help|-h|help)
+        usage ;;
+    *)
+        # First arg is a path — default to "all"
+        if [[ -e "$1" ]]; then
+            MODE="all"
+        else
+            printf "${RED}Unknown mode or path not found: %s${RESET}\n\nRun: conform --help\n" "$1"
+            exit 1
+        fi
+        ;;
+esac
+
+if [[ $# -lt 1 ]]; then
+    printf "${RED}Error: target path required${RESET}\n\nUsage: conform [mode] <target> [options]\n"
+    exit 1
+fi
+
+TARGET="$1"
+shift
+
+if [[ ! -e "$TARGET" ]]; then
+    printf "${RED}Error: target not found: %s${RESET}\n" "$TARGET"
+    exit 1
+fi
+
+# Defaults
+SKIP_LIST=""
+MODEL="$DEFAULT_MODEL"
+MAX_TURNS=5
+TIMEOUT=60
+VERBOSE=0
+DRY_RUN=0
+STOP_ON_FAIL=0
+COMPONENTS=()
+
+# Auth: auto-detect from env
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    AUTH_MODE="api"
+else
+    AUTH_MODE="oauth"
+fi
+
+# Parse remaining flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --skills)           COMPONENTS+=("skills"); shift ;;
+        --commands)         COMPONENTS+=("commands"); shift ;;
+        --hooks)            COMPONENTS+=("hooks"); shift ;;
+        --agents)           COMPONENTS+=("agents"); shift ;;
+        --skip)             SKIP_LIST="$2"; shift 2 ;;
+        --auth)             AUTH_MODE="$2"; shift 2 ;;
+        --model)            MODEL="$2"; shift 2 ;;
+        --max-turns)        MAX_TURNS="$2"; shift 2 ;;
+        --timeout)          TIMEOUT="$2"; shift 2 ;;
+        --verbose|-v)       VERBOSE=1; shift ;;
+        --dry-run)          DRY_RUN=1; shift ;;
+        --stop-on-fail)     STOP_ON_FAIL=1; shift ;;
+        --help|-h)          usage ;;
+        *)                  printf "${RED}Unknown option: %s${RESET}\n" "$1"; exit 1 ;;
+    esac
+done
+
+# If no components specified, test all
+if [[ ${#COMPONENTS[@]} -eq 0 ]]; then
+    COMPONENTS=("skills" "commands" "agents" "hooks")
+fi
+
+# Resolve plugin list
+PLUGINS=()
+while IFS= read -r plugin_dir; do
+    PLUGINS+=("$plugin_dir")
+done < <(resolve_plugins "$TARGET" "$SKIP_LIST")
+
+if [[ ${#PLUGINS[@]} -eq 0 ]]; then
+    printf "${RED}No plugins found at: %s${RESET}\n" "$TARGET"
+    exit 1
+fi
+
+# ── Component check helpers ──────────────────────────────────────────
+
+has_component() {
+    local comp="$1"
+    for c in "${COMPONENTS[@]}"; do
+        [[ "$c" == "$comp" ]] && return 0
+    done
+    return 1
+}
+
+# ── Mode: structural ────────────────────────────────────────────────
+
+run_structural() {
+    printf "\n${CYAN}${BOLD}Structural Tests${RESET}\n"
+    printf "${CYAN}════════════════════════════════════════════${RESET}\n\n"
+
+    # Source lib modules
+    for lib_file in "$SCRIPT_DIR"/lib/*.sh; do
+        # shellcheck source=/dev/null
+        source "$lib_file"
+    done
+
+    for plugin_dir in "${PLUGINS[@]}"; do
+        local plugin_name
+        plugin_name=$(basename "$plugin_dir")
+
+        # Resolve effective component root (.claude/ subdir or plugin root)
+        local eff_dir
+        eff_dir=$(effective_plugin_dir "$plugin_dir")
+
+        # Determine the actual project root for $CLAUDE_PROJECT_DIR resolution.
+        # When targeting a .claude dir directly, the project root is its parent
+        # and we use the parent name for display.
+        local proj_root="$plugin_dir"
+        if [[ "$plugin_name" == ".claude" ]]; then
+            proj_root="$(dirname "$plugin_dir")"
+            plugin_name="$(basename "$proj_root")"
+        fi
+
+        section "Plugin: $plugin_name"
+
+        # Manifest tests only if .claude-plugin/ exists and no component filter is active
+        if [[ ${#COMPONENTS[@]} -eq 4 ]]; then
+            if [[ -d "$plugin_dir/.claude-plugin" ]]; then
+                test_plugin_manifest "$plugin_dir"
+            elif [[ "$eff_dir" != "$plugin_dir" ]]; then
+                printf "# (.claude/ project directory — validating components only)\n"
+            else
+                printf "# (no .claude-plugin/ manifest — validating components only)\n"
+            fi
+        fi
+
+        has_component "skills"   && test_skills   "$eff_dir"
+        has_component "commands" && test_commands  "$eff_dir"
+        has_component "agents"   && test_agents   "$eff_dir"
+        has_component "hooks"    && test_hooks    "$eff_dir" "$proj_root"
+    done
+
+    # Cross-plugin checks (only when testing multiple plugins)
+    if [[ ${#PLUGINS[@]} -gt 1 ]]; then
+        test_cross_plugin
+    fi
+
+    print_summary
+    return $HAS_FAILURES
+}
+
+# ── Mode: integration (claude -p) ──────────────────────────────────
+
+run_integration() {
+    local auth_label
+    [[ "$AUTH_MODE" == "api" ]] && auth_label="API key" || auth_label="OAuth"
+    printf "\n${CYAN}${BOLD}Integration Tests (claude -p / %s)${RESET}\n" "$auth_label"
+    printf "${CYAN}════════════════════════════════════════════${RESET}\n\n"
+
+    # Preflight: check auth
+    if [[ "$AUTH_MODE" == "api" && -z "${ANTHROPIC_API_KEY:-}" ]]; then
+        printf "${RED}Error: --auth api requires ANTHROPIC_API_KEY to be set${RESET}\n"
+        exit 1
+    fi
+
+    if [[ "$AUTH_MODE" == "oauth" ]]; then
+        if ! command -v claude &>/dev/null; then
+            printf "${RED}Error: 'claude' CLI not found in PATH${RESET}\n"
+            exit 1
+        fi
+    fi
+
+    # Generate cases for target plugins
+    # When targeting a .claude dir, the "plugin" is the parent project dir,
+    # so plugins_dir must be the grandparent for generate-cases.py to find it.
+    local plugins_dir plugin_filter
+    if [[ ${#PLUGINS[@]} -eq 1 ]]; then
+        local single="${PLUGINS[0]}"
+        local single_name
+        single_name=$(basename "$single")
+        if [[ "$single_name" == ".claude" ]]; then
+            # .claude project dir — plugin is the parent
+            local project_dir
+            project_dir=$(dirname "$single")
+            plugins_dir=$(dirname "$project_dir")
+            plugin_filter=$(basename "$project_dir")
+        else
+            plugins_dir=$(dirname "$single")
+            plugin_filter="$single_name"
+        fi
+    else
+        plugins_dir="$(dirname "${PLUGINS[0]}")"
+        plugin_filter=""
+    fi
+
+    local cases_file="$SCRIPT_DIR/integration/cases.json"
+    local components_csv
+    components_csv=$(IFS=','; echo "${COMPONENTS[*]}")
+
+    python3 "$SCRIPT_DIR/integration/generate-cases.py" \
+        "$cases_file" \
+        --plugins-dir "$plugins_dir" \
+        --skip "$SKIP_LIST" \
+        --types "$components_csv"
+
+    # Build args for runner
+    local -a runner_args=()
+    runner_args+=(--model "$MODEL")
+    runner_args+=(--max-turns "$MAX_TURNS")
+    runner_args+=(--timeout "$TIMEOUT")
+    runner_args+=(--plugins-dir "$plugins_dir")
+    runner_args+=(--auth "$AUTH_MODE")
+    [[ $VERBOSE -eq 1 ]]       && runner_args+=(--verbose)
+    [[ $DRY_RUN -eq 1 ]]       && runner_args+=(--dry-run)
+    [[ $STOP_ON_FAIL -eq 1 ]]  && runner_args+=(--stop-on-fail)
+
+    # Filter to specific plugin if single
+    if [[ -n "$plugin_filter" ]]; then
+        runner_args+=(--plugin "$plugin_filter")
+    fi
+
+    bash "$SCRIPT_DIR/integration/run-integration.sh" "${runner_args[@]}"
+}
+
+# ── Mode: all ────────────────────────────────────────────────────────
+
+run_all() {
+    local structural_exit=0
+
+    run_structural || structural_exit=$?
+
+    if [[ $structural_exit -ne 0 ]]; then
+        printf "\n${YELLOW}Structural tests had failures. Running integration anyway.${RESET}\n"
+    fi
+
+    printf "\n"
+
+    run_integration
+}
+
+# ── Dispatch ─────────────────────────────────────────────────────────
+
+printf "${CYAN}${BOLD}Claude Test Suite${RESET}\n"
+printf "${DIM}Plugins: %d | Components: %s | Mode: %s | Auth: %s${RESET}\n" \
+    "${#PLUGINS[@]}" "$(IFS=','; echo "${COMPONENTS[*]}")" "$MODE" "$AUTH_MODE"
+
+case "$MODE" in
+    structural)  run_structural ;;
+    integration) run_integration ;;
+    all)         run_all ;;
+esac

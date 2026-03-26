@@ -1,0 +1,5 @@
+{
+  "name": "golden-plugin",
+  "description": "A test plugin that should pass all structural checks",
+  "version": "1.0.0"
+}

@@ -1,0 +1,24 @@
+# Test artifacts — exclude from published package
+cli/dist/__tests__/
+cli/dist/gen-prompts.*
+
+# Source and dev files
+cli/src/
+cli/tsconfig.json
+cli/jest.config.cjs
+cli/eslint.config.js
+cli/package.json
+cli/pnpm-lock.yaml
+
+# Project files
+tests/
+.ci/
+.github/
+.env
+.DS_Store
+*.log
+Dockerfile
+validate.sh
+integration/cases.json
+integration/.discovery-cases.json
+integration/logs/

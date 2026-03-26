@@ -1,0 +1,4 @@
+{
+  "name": "warning-plugin",
+  "description": "A plugin that triggers warnings but no failures"
+}

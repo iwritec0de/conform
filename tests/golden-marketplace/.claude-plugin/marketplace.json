@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "golden-marketplace",
+  "description": "A test marketplace that should pass all schema checks",
+  "owner": {
+    "name": "Test Author"
+  },
+  "plugins": [
+    {
+      "name": "test-plugin",
+      "description": "A test plugin entry",
+      "source": {
+        "source": "github",
+        "repo": "test/test-plugin"
+      },
+      "category": "development",
+      "homepage": "https://github.com/test/test-plugin"
+    }
+  ]
+}

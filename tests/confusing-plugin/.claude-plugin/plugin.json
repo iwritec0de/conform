@@ -1,0 +1,5 @@
+{
+  "name": "confusing-plugin",
+  "description": "Plugin with overlapping skill descriptions that cause wrong-skill-loaded warnings",
+  "version": "1.0.0"
+}

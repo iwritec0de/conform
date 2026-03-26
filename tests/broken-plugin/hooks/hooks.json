@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "InvalidEvent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nonexistent-script.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "unknown_type"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "echo flat format not allowed"
+      }
+    ]
+  }
+}

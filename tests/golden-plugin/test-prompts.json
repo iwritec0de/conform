@@ -1,0 +1,20 @@
+[
+  {
+    "id": "skill-data-analysis",
+    "component": "skill",
+    "name": "data-analysis",
+    "prompt": "I need to analyze data from a CSV file and create a chart showing the trends",
+    "expect": {
+      "responseContains": ["data"]
+    }
+  },
+  {
+    "id": "agent-data-helper",
+    "component": "agent",
+    "name": "data-helper",
+    "prompt": "I need to clean data and process a dataset to remove duplicates and fix formatting",
+    "expect": {
+      "responseContains": ["data"]
+    }
+  }
+]

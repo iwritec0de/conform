@@ -1,0 +1,9 @@
+node_modules/
+dist/
+reports/
+.DS_Store
+.env
+*.log
+integration/cases.json
+integration/.discovery-cases.json
+integration/logs/

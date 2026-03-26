@@ -1,0 +1,70 @@
+{
+	"name": "@iwritec0de/conform",
+	"version": "0.1.0",
+	"description": "Automated validation for Claude Code plugins and shared .claude configurations — structural checks and integration tests",
+	"type": "module",
+	"bin": {
+		"conform": "./cli/dist/index.js"
+	},
+	"scripts": {
+		"build": "cd cli && tsc -p tsconfig.build.json && cp -r src/lint/schemas dist/lint/schemas",
+		"dev": "cd cli && tsx src/index.tsx",
+		"start": "node cli/dist/index.js",
+		"test": "cd cli && NODE_OPTIONS='--experimental-vm-modules' npx jest --config jest.config.cjs",
+		"test:watch": "cd cli && NODE_OPTIONS='--experimental-vm-modules' npx jest --config jest.config.cjs --watch",
+		"test:fixtures": "bash tests/run-tests.sh",
+		"test:all": "pnpm run test && pnpm run test:fixtures",
+		"lint": "cd cli && npx eslint src/",
+		"lint:fix": "cd cli && npx eslint src/ --fix",
+		"format": "cd cli && npx prettier --write 'src/**/*.{ts,tsx}'",
+		"format:check": "cd cli && npx prettier --check 'src/**/*.{ts,tsx}'",
+		"typecheck": "cd cli && npx tsc --noEmit",
+		"gen-prompts": "cd cli && npx tsx src/gen-prompts.ts",
+		"clean": "rm -rf cli/dist",
+		"prebuild": "pnpm run clean",
+		"prepack": "pnpm run build",
+		"pack:dry": "pnpm pack --dry-run",
+		"release:check": "pnpm run test:all && pnpm run lint && pnpm run format:check && pnpm run build && pnpm pack --dry-run",
+		"validate": "bash validate.sh",
+		"validate:quick": "bash validate.sh --quick",
+		"prepublishOnly": "pnpm run test:all && pnpm run lint && pnpm run build"
+	},
+	"files": [
+		"cli/dist/**",
+		"lib/**",
+		"integration/run-integration.sh",
+		"integration/generate-cases.py",
+		"conform",
+		"run-tests.sh"
+	],
+	"dependencies": {
+		"ink": "^6.8.0",
+		"react": "^19.2.4"
+	},
+	"devDependencies": {
+		"@types/node": "^25.4.0",
+		"@types/react": "^19.2.14",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	},
+	"keywords": [
+		"claude",
+		"claude-code",
+		"plugin",
+		"testing",
+		"validation"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/iwritec0de/conform.git"
+	},
+	"homepage": "https://github.com/iwritec0de/conform#readme",
+	"bugs": {
+		"url": "https://github.com/iwritec0de/conform/issues"
+	},
+	"license": "MIT",
+	"packageManager": "pnpm@10.30.3",
+	"engines": {
+		"node": ">=18"
+	}
+}
