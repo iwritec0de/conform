@@ -1,6 +1,6 @@
 {
 	"name": "@iwritec0de/conform",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Automated validation for Claude Code plugins and shared .claude configurations — structural checks and integration tests",
 	"type": "module",
 	"bin": {
@@ -38,14 +38,16 @@
 		"run-tests.sh"
 	],
 	"dependencies": {
+		"ajv": "^8.18.0",
+		"ajv-formats": "^3.0.1",
 		"ink": "^6.8.0",
 		"react": "^19.2.4"
 	},
 	"devDependencies": {
-		"@types/node": "^25.4.0",
+		"@types/node": "^25.5.0",
 		"@types/react": "^19.2.14",
 		"tsx": "^4.21.0",
-		"typescript": "^5.9.3"
+		"typescript": "^6.0.2"
 	},
 	"keywords": [
 		"claude",
@@ -63,7 +65,7 @@
 		"url": "https://github.com/iwritec0de/conform/issues"
 	},
 	"license": "MIT",
-	"packageManager": "pnpm@10.30.3",
+	"packageManager": "pnpm@10.33.0",
 	"engines": {
 		"node": ">=18"
 	}
