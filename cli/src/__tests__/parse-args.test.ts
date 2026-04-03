@@ -188,9 +188,12 @@ describe("parseArgs", () => {
             expect(opts.verbose).toBe(true);
         });
 
-        it("parses -v shorthand", () => {
-            const opts = parseArgs(["node", "conform", "./p", "-v"]);
-            expect(opts.verbose).toBe(true);
+        it("parses -v as version (exits)", () => {
+            const mockExit = jest.spyOn(process, "exit").mockImplementation(() => {
+                throw new Error("process.exit");
+            });
+            expect(() => parseArgs(["node", "conform", "-v"])).toThrow("process.exit");
+            mockExit.mockRestore();
         });
 
         it("parses --dry-run", () => {
