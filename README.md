@@ -1,5 +1,9 @@
 # conform
 
+<p align="center">
+  <img src=".github/conform-demo.gif" alt="conform demo" width="800">
+</p>
+
 Automated validation for Claude Code plugins and shared `.claude` configurations. Structural checks, integration tests, response logging, and linting — with a terminal UI or JSON output for CI.
 
 ## Install
@@ -258,7 +262,7 @@ conform lint ./my-plugin --config ./custom-conform.yml
 | `--model <name>` | Model for integration tests | `haiku` |
 | `--max-turns <n>` | Max conversation turns per test | `5` |
 | `--timeout <secs>` | Per-test timeout in seconds | `60` |
-| `--verbose`, `-v` | Show full model responses | off |
+| `--verbose` | Show full model responses | off |
 | `--dry-run` | Preview test plan without API calls | off |
 | `--stop-on-fail` | Stop after first failure | off |
 | `--report` | Generate a report file after tests | off |
@@ -272,7 +276,7 @@ conform lint ./my-plugin --config ./custom-conform.yml
 | `--disable <rules>` | Comma-separated rule IDs to disable | — |
 | `--config <path>` | Path to conform.yml config file | auto-discover |
 | `--help`, `-h` | Show help message | — |
-| `--version` | Show version | — |
+| `--version`, `-v` | Show version | — |
 
 ## License
 
