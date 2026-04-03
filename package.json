@@ -24,10 +24,10 @@
 		"prebuild": "pnpm run clean",
 		"prepack": "pnpm run build",
 		"pack:dry": "pnpm pack --dry-run",
-		"release:check": "pnpm run test:all && pnpm run lint && pnpm run format:check && pnpm run build && pnpm pack --dry-run",
+		"release:check": "bash scripts/check-deps.sh && pnpm run test:all && pnpm run lint && pnpm run format:check && pnpm run build && pnpm pack --dry-run",
 		"validate": "bash validate.sh",
 		"validate:quick": "bash validate.sh --quick",
-		"prepublishOnly": "pnpm run test:all && pnpm run lint && pnpm run build"
+		"prepublishOnly": "bash scripts/check-deps.sh && pnpm run test:all && pnpm run lint && pnpm run build"
 	},
 	"files": [
 		"cli/dist/**",
