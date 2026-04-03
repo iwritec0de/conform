@@ -50,14 +50,14 @@ const USAGE = `
   --skip <list>      Comma-separated directory names to skip
   --ci               Non-interactive output for CI pipelines (no TUI)
   --json             Output as JSON (lint and --ci modes)
-  --verbose, -v      Show full model responses
+  --verbose          Show full model responses
   --dry-run          Preview test plan without running API calls
   --stop-on-fail     Stop after first failure
   --max-desc-length <n>  Max skill description length   (default: 1024)
   --disable <rules>  Comma-separated rule IDs to disable
   --config <path>    Path to conform.yml config file    (auto-discovered)
   --help, -h         Show this help message
-  --version          Show version
+  --version, -v      Show version
 
 \x1b[1mEXAMPLES\x1b[0m
   conform ./my-plugin                                  \x1b[2m# All tests on a plugin\x1b[0m
@@ -91,7 +91,7 @@ export function parseArgs(argv: string[]): CliOptions {
         process.exit(0);
     }
 
-    if (args.includes("--version")) {
+    if (args.includes("--version") || args.includes("-v")) {
         try {
             const pkgPath = resolve(__dirname, "../../package.json");
             const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
@@ -180,7 +180,6 @@ export function parseArgs(argv: string[]): CliOptions {
                 opts.timeout = parseInt(args[++i], 10);
                 break;
             case "--verbose":
-            case "-v":
                 opts.verbose = true;
                 break;
             case "--dry-run":
